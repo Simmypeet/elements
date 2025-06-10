@@ -1,5 +1,5 @@
 {
-  "name": "@angular-extensions/elements",
+  "name": "elements",
   "version": "20.0.2",
   "scripts": {
     "ng": "ng",
