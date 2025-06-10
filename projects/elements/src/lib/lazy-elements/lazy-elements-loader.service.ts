@@ -91,6 +91,58 @@ export class LazyElementsLoaderService implements OnDestroy {
     );
   }
 
+  /**
+   * Preloads a JavaScript file by creating a `<link>` element and appending it
+   * to the document head so that as soon as the element is used, the browser
+   * will have it cached and ready to use.
+   */
+  async preloadJavascript(
+    href: string,
+    rel: string,
+    crossOrigin: string,
+  ): Promise<void> {
+    if (this.#hasElement(href)) {
+      const notifier = this.#addElement(href);
+
+      const link = document.createElement('link');
+      link.rel = rel;
+      link.href = getPolicy()?.createScriptURL(href) ?? href;
+      link.as = 'script';
+      link.crossOrigin = crossOrigin;
+
+      const onLoad = () => {
+        notifier.resolve();
+        cleanup();
+      };
+
+      const onError = (error: ErrorEvent) => {
+        notifier.reject(error);
+        cleanup();
+        // Caretaker note: don't put it before the `reject` and `cleanup` since the user may have some
+        // custom error handler that will re-throw the error through `throw error`. Hence the code won't
+        // be executed, and the promise won't be rejected.
+        this.#errorHandler.handleError(error);
+      };
+      // The `load` and `error` event listeners capture `this`. That's why they have to be removed manually.
+      // Otherwise, the `LazyElementsLoaderService` is not going to be GC'd.
+      // skipcq: JS-0016
+      function cleanup() {
+        link.removeEventListener('load', onLoad);
+        link.removeEventListener('error', onError);
+      }
+      link.addEventListener('load', onLoad, {
+        signal: LazyElementsLoaderService.controller?.signal,
+      } as AddEventListenerOptions);
+      link.addEventListener('error', onError, {
+        signal: LazyElementsLoaderService.controller?.signal,
+      } as AddEventListenerOptions);
+
+      document.head.appendChild(link);
+    }
+
+    return this.#registry.get(this.#stripUrlProtocol(href));
+  }
+
   async loadElement(
     url: string | null,
     tag: string,
